@@ -315,6 +315,8 @@ def main():
             ycb_objects = CreateClutterClearingYcbObjectList()
             for model_file, X_WObject in ycb_objects:
                 station.AddManipulandFromFile(model_file, X_WObject)
+        else:
+            assert False
 
         station.Finalize()
         DrakeVisualizer.AddToBuilder(builder,
@@ -323,8 +325,6 @@ def main():
             meshcat = ConnectMeshcatVisualizer(
                 builder, output_port=station.GetOutputPort("geometry_query"),
                 zmq_url=args.meshcat, open_browser=args.open_browser)
-            if args.setup == 'planar':
-                meshcat.set_planar_viewpoint()
 
     robot = station.get_controller_plant()
     params = DifferentialInverseKinematicsParameters(robot.num_positions(),

@@ -342,6 +342,8 @@ def main():
             ycb_objects = CreateClutterClearingYcbObjectList()
             for model_file, X_WObject in ycb_objects:
                 station.AddManipulandFromFile(model_file, X_WObject)
+        else:
+            assert False
 
         station.Finalize()
         query_port = station.GetOutputPort("query_object")
@@ -349,13 +351,10 @@ def main():
         DrakeVisualizer.AddToBuilder(builder, query_port)
         if args.meshcat:
             meshcat = Meshcat()
-            meshcat_visualizer = MeshcatVisualizerCpp.AddToBuilder(
+            MeshcatVisualizerCpp.AddToBuilder(
                 builder=builder,
                 query_object_port=query_port,
                 meshcat=meshcat)
-
-            if args.setup == 'planar':
-                meshcat.Set2dRenderMode()
 
             if args.browser_new is not None:
                 url = meshcat.web_url()

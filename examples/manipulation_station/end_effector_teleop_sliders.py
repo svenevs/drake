@@ -252,6 +252,8 @@ def main():
                 "drake/examples/manipulation_station/models/"
                 + "061_foam_brick.sdf",
                 RigidTransform(RotationMatrix.Identity(), [0.6, 0, 0]))
+        else:
+            assert False
 
         station.Finalize()
 
@@ -348,7 +350,11 @@ def main():
 
     diagram = builder.Build()
     simulator = Simulator(diagram)
-    iiwa_velocities_log = iiwa_velocities.FindLog(simulator.get_context())
+
+    if args.test:
+        iiwa_velocities_log = iiwa_velocities.FindLog(simulator.get_context())
+    else:
+        iiwa_velocities_log = None
 
     # This is important to avoid duplicate publishes to the hardware interface:
     simulator.set_publish_every_time_step(False)
