@@ -22,9 +22,18 @@ RUN /image/provision.sh
 
 FROM base AS vtk
 
-ADD image/clone-vtk.sh /image/
-ADD image/common-definitions.sh /image/
-ADD image/vtk-cmake-args.sh /image/
-ADD image/build-and-package-vtk.sh /image/
+# clone_vtk needs vtk_common, add both first.
+ADD image/clone_vtk.py /image/
+ADD image/vtk_common.py /image/
+RUN python3 /image/clone_vtk.py
 
-RUN /image/build-and-package-vtk.sh
+ADD image/vtk_cmake_args.py /image/
+ADD image/build_and_package_vtk.py /image/
+RUN python3 /image/build_and_package_vtk.py
+
+# ADD image/clone-vtk.sh /image/
+# ADD image/common-definitions.sh /image/
+# ADD image/vtk-cmake-args.sh /image/
+# ADD image/build-and-package-vtk.sh /image/
+
+# RUN /image/build-and-package-vtk.sh

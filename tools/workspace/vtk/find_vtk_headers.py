@@ -26,9 +26,9 @@ piping this script to e.g., ``xclip -i -selection clipboard`` to paste into
 ``repository.bzl``.
 """
 import argparse
-from pathlib import Path
-import tarfile
 import sys
+import tarfile
+from pathlib import Path
 
 this_file_dir = Path(__file__).parent.absolute()
 
@@ -218,7 +218,6 @@ def main():
         sys.exit(1)
 
     # Gather all headers available in the source and build trees.
-    source_module = source_root / VTK_SOURCE_MAP[module]
     sources = []
     mod = VTK_SOURCE_MAP[module]
     for ext in HEADER_EXTS:
