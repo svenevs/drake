@@ -34,7 +34,7 @@ def build_number() -> int:
         elif arch == "arm64":
             return 1  # macOS arm64
 
-    raise NotImplementedError(f"Unrecognized platform.")
+    raise NotImplementedError("Unrecognized platform.")
 
 
 def codename() -> str:
@@ -81,10 +81,15 @@ def vtk_package_tree() -> PackageTree:
 
 
 def vtk_version(source_dir: Path) -> str:
-    proc = subprocess.run(["git", "describe"], check=True, cwd=source_dir, stdout=subprocess.PIPE)
+    proc = subprocess.run(
+        ["git", "describe"], check=True, cwd=source_dir, stdout=subprocess.PIPE
+    )
     return proc.stdout.decode("utf-8").strip()
 
 
 def vtk_archive_name(source_dir: Path) -> str:
-    desc = f"{vtk_version()}-{codename()}-{architecture()}-{build_number()}"
-    return f"vtk-{desc}.tar.gz"
+    version = vtk_version(source_dir)
+    code = codename()
+    arch = architecture()
+    build = build_number()
+    return f"vtk-{version}-{code}-{arch}-{build}.tar.gz"

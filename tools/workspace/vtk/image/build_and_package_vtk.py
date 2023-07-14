@@ -1,16 +1,19 @@
-import platform
-import os
+import hashlib
 import shutil
 import subprocess
+import tarfile
 
 from clone_vtk import clone_vtk
+
+from vtk_cmake_args import cmake_configure_args
+
 from vtk_common import (
     PackageTree,
     system_is_linux,
+    vtk_archive_name,
     vtk_git_ref,
     vtk_package_tree,
 )
-from vtk_cmake_args import cmake_configure_args
 
 
 def build_vtk(package_tree: PackageTree):
@@ -44,13 +47,9 @@ def build_vtk(package_tree: PackageTree):
             "install",
         ]  # this comment stops black from making the line too long.
     )
-    import tarfile
-    import hashlib
 
-    from pathlib import Path
-
-    from vtk_common import vtk_archive_name
-    tarball_path = package_tree.root / vtk_archive_name()
+    archive_name = vtk_archive_name(package_tree.source_dir)
+    tarball_path = package_tree.root / archive_name
     # Creating the .tgz can take a little while, display something to the user
     # so it's clear the script isn't stuck.
     print(f"==> Compressing {package_tree.install_dir} to {tarball_path}.")

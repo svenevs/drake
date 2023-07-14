@@ -6,13 +6,18 @@ import atexit
 import os
 import platform
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from bazel_tools.tools.python.runfiles import runfiles
 
-from image.vtk_common import vtk_package_tree
+# NOTE: doing from image.vtk_common confuses mypy, there is no other reason to
+# do this sys.path modification.
+# from image.vtk_common import vtk_package_tree
+sys.path.insert(0, str(Path(__file__).parent.absolute() / "image"))
+from vtk_common import vtk_package_tree  # noqa: E402
 
 
 @dataclass
