@@ -192,7 +192,7 @@ def package_vtk(package_tree: PackageTree) -> VtkArchive:
             if not data:
                 break
             sha256.update(data)
-    with open(sha256_sum_path) as f:
+    with open(sha256_sum_path, "w") as f:
         f.write(f"{sha256.hexdigest()} {tar_gz_path.name}\n")
 
     return VtkArchive(tar_gz_path, sha256_sum_path)
