@@ -88,16 +88,16 @@ def _impl(repository_ctx):
         if os_result.is_macos or os_result.is_macos_wheel:
             if os_result.macos_arch_result == "arm64":
                 archive = "vtk-v9.2.0.rc2-1001-gd706250a14-mac-arm64-1.tar.gz"
-                sha256 = "34eb09fa79a48b66ac628a244711f1030574ed484fa1d3cc89e4a3efeffc7d4a"  # noqa
+                sha256 = "61317cda495efe3181cc885737fe6d295c4653234e1d63a6bf45d68416a932be"  # noqa
             else:
                 archive = "vtk-v9.2.0.rc2-1001-gd706250a14-mac-x86_64-1.tar.gz"
-                sha256 = "4dde5709a12e479898a198c53acbc2c73cebaa82b3b335c4aa4b33b6e4bf2b0d"  # noqa
+                sha256 = "0e7378fc5858313abd9f0ba53df4bf8977cdb4d101c617044ebfa15b90b0f46f"  # noqa
         elif os_result.ubuntu_release == "20.04" or os_result.is_manylinux:
             archive = "vtk-v9.2.0.rc2-1001-gd706250a14-focal-x86_64-1.tar.gz"
-            sha256 = "e6588673c23a5a1c606d176a4405e698a0576da0bdbf4fe99652cbe9aed2b445"  # noqa
+            sha256 = "18dc9c8942f7a1d613d61f9f36d664a0e2c733fe30f88bc68f5f25ce60178084"  # noqa
         elif os_result.ubuntu_release == "22.04":
             archive = "vtk-v9.2.0.rc2-1001-gd706250a14-jammy-x86_64-1.tar.gz"
-            sha256 = "3ef71d50ad492b247f1f00b188bac5422f63eaf73f34c6e0ccaa2d54a7eca7c5"  # noqa
+            sha256 = "784b8b58e7eb786c6bce42e30cf8ed892017490b38bcc08fcf1f4c53d14ccce6"  # noqa
         else:
             fail("Operating system is NOT supported {}".format(os_result))
 
