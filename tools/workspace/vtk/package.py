@@ -95,13 +95,15 @@ def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
             _images_to_remove.append(tag)
 
         # Extract the .tar.gz archive.
-        container_name = f"{tag}.extract".replace(":", ".")
+        extract_container_name = f"{tag}.extract".replace(":", ".")
         package_tree = vtk_package_tree()
         ls_proc = subprocess.run(
             [
                 "docker",
                 "run",
-                f"--name={container_name}",
+                "--rm",
+                f"--name={extract_container_name}",
+                tag,
                 "bash",
                 "-c",
                 f"ls {package_tree.root}/vtk-*.tar.gz{{,.sha256}}",
@@ -110,22 +112,19 @@ def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
             stdout=subprocess.PIPE,
         )
 
-        try:
-            vtk_paths = ls_proc.stdout.decode("utf-8").splitlines()
-            # There should be 1 vtk-*.tar.gz, and 1 vtk-*.tar.gz.sha256.
-            assert len(vtk_paths) == 2, f"Expected two files in {vtk_paths}."
-            for container_path in vtk_paths:
-                basename = Path(container_path).name
-                subprocess.check_call(
-                    [
-                        "docker",
-                        "cp",
-                        f"{container_name}:{container_path}",
-                        str(output_dir / basename),
-                    ]
-                )
-        finally:
-            subprocess.check_call(["docker", "rm", container_name])
+        vtk_paths = ls_proc.stdout.decode("utf-8").splitlines()
+        # There should be 1 vtk-*.tar.gz, and 1 vtk-*.tar.gz.sha256.
+        assert len(vtk_paths) == 2, f"Expected two files in {vtk_paths}."
+        for container_path in vtk_paths:
+            basename = Path(container_path).name
+            subprocess.check_call(
+                [
+                    "docker",
+                    "cp",
+                    f"{tag}:{container_path}",
+                    str(output_dir / basename),
+                ]
+            )
 
 
 def build_macos(output_dir: Path, keep: bool):
