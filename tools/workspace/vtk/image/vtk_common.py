@@ -8,7 +8,15 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from bazel_tools.tools.python.runfiles import runfiles
+# NOTE: on the linux build, we need `runfiles` for `tools/workspace/package.py`
+# to know where to run docker.  However, inside of docker, we cannot import
+# `runfiles` and do not need to.  On macOS, though, we do need it.
+try:
+    from bazel_tools.tools.python.runfiles import runfiles
+
+    BAZEL_TOOLS_RUNFILES_IMPORTED = True
+except ImportError:
+    BAZEL_TOOLS_RUNFILES_IMPORTED = False
 
 
 @dataclass
@@ -61,11 +69,18 @@ def codename() -> str:
 
 def _rlocation(relative_path: str) -> Path:
     """Return the real path to ``tools/workspace/vtk/{relative_path}``."""
-    manifest = runfiles.Create()
-    resource_path = f"drake/tools/workspace/vtk/{relative_path}"
-    resolved_path = manifest.Rlocation(resource_path)
-    assert resolved_path, f"Missing {resource_path}"
-    return Path(resolved_path).resolve()
+    if BAZEL_TOOLS_RUNFILES_IMPORTED:
+        manifest = runfiles.Create()
+        resource_path = f"drake/tools/workspace/vtk/{relative_path}"
+        resolved_path = manifest.Rlocation(resource_path)
+        assert resolved_path, f"Missing {resource_path}"
+        return Path(resolved_path).resolve()
+
+    # Fail docker builds that reach this statement.
+    raise RuntimeError(
+        "_rlocation cannot be used, execution of "
+        "`from bazel_tools.tools.python.runfiles import runfiles` failed."
+    )
 
 
 def system_is_linux():
