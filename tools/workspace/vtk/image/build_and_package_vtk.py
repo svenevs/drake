@@ -1,18 +1,11 @@
-import hashlib
-import shutil
-import subprocess
-import tarfile
-
 from clone_vtk import clone_vtk
 
 from vtk_cmake_configure_args import vtk_cmake_configure_args
 
 from vtk_common import (
-    PackageTree,
     build_vtk,
     package_vtk,
     system_is_linux,
-    vtk_archive_name,
     vtk_git_ref,
     vtk_package_tree,
 )
