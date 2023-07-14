@@ -11,18 +11,24 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from bazel_tools.tools.python.runfiles import runfiles
+# NOTE: on macOS we need these path modifications.  For mypy checks, we add the
+# image directory rather than do a `from image.<module>` import for no other
+# reason than mypy gets confused linting the whole directory if there is an
+# `from vtk_common import ...` and `from image.vtk_common import ...`.
+sys.path.insert(0, str(Path(__file__).parent.resolve() / "image"))
+from clone_vtk import clone_vtk  # noqa: E402
 
-# NOTE: doing from image.vtk_common confuses mypy, there is no other reason to
-# do this sys.path modification.
-# from image.vtk_common import vtk_package_tree
-sys.path.insert(0, str(Path(__file__).parent.absolute() / "image"))
-from vtk_common import vtk_package_tree  # noqa: E402
+from vtk_cmake_args import cmake_configure_args  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).parent.resolve()))
-from image.vtk_common import architecture, _rlocation, vtk_package_tree, system_is_linux, system_is_macos, _rlocation, vtk_git_ref
-from image.clone_vtk import clone_vtk
-from image.vtk_cmake_args import cmake_configure_args
+from vtk_common import (  # noqa: E402
+    _rlocation,
+    architecture,
+    system_is_linux,
+    system_is_macos,
+    vtk_git_ref,
+    vtk_package_tree,
+)
+
 
 @dataclass
 class DockerPlatform:
@@ -124,9 +130,7 @@ def build_macos(output_dir: Path, keep: bool):
     # Gather the explicit information needed for directly configuring the CMake
     # C and C++ compilers, and configuring the Xcode toolchain.
     xcrun_proc = subprocess.run(
-        [
-            "xcrun", "-sdk", "macosx", "-show-sdk-path"
-        ],
+        ["xcrun", "-sdk", "macosx", "-show-sdk-path"],
         check=True,
         stdout=subprocess.PIPE,
     )
@@ -134,7 +138,11 @@ def build_macos(output_dir: Path, keep: bool):
 
     xcrun_proc = subprocess.run(
         [
-            "xcrun", "-sdk", "macosx", "-find", "gcc",
+            "xcrun",
+            "-sdk",
+            "macosx",
+            "-find",
+            "gcc",
         ],
         check=True,
         stdout=subprocess.PIPE,
@@ -143,24 +151,28 @@ def build_macos(output_dir: Path, keep: bool):
 
     xcrun_proc = subprocess.run(
         [
-            "xcrun", "-sdk", "macosx", "-find", "g++",
+            "xcrun",
+            "-sdk",
+            "macosx",
+            "-find",
+            "g++",
         ],
         check=True,
         stdout=subprocess.PIPE,
     )
     xcode_cxx_compiler = xcrun_proc.stdout.decode("utf-8").strip()
 
-    print(f"=> Using Xcode toolchain:")
+    print("=> Using Xcode toolchain:")
     print(f"   Sysroot:      {sysroot}")
     print(f"   C Compiler:   {xcode_c_compiler}")
     print(f"   C++ Compiler: {xcode_cxx_compiler}")
 
     package_tree = vtk_package_tree()
-    # TODO(svenevs): what are we wanting to do to save macOS dev time vs clean up.
+    # TODO(svenevs): what to clean up vs allow deleting (save dev time)?
     if package_tree.root.exists():
         raise RuntimeError(
-            f"ERROR: {package_tree.root} already exists.  This directory is retained "
-            "when the --keep argument is given, refusing to delete."
+            f"ERROR: {package_tree.root} already exists.  This directory is "
+            "retained when the --keep argument is given, refusing to delete."
         )
     print("=> Creating the following directories:")
     print(f"  Containment folder: {package_tree.root}")
@@ -177,7 +189,8 @@ def build_macos(output_dir: Path, keep: bool):
             # TODO(svenevs): yes, this should be used, you need to revisit the
             # dependencies again.  Seems the externals on macOS are different.
             # "-Werror",
-            "-G", "Ninja",
+            "-G",
+            "Ninja",
             f"-DCMAKE_INSTALL_PREFIX:PATH={package_tree.install_dir}",
             "-DCMAKE_BUILD_TYPE:STRING=Release",
             f"-DCMAKE_OSX_ARCHITECTURES:STRING={architecture()}",
@@ -188,11 +201,12 @@ def build_macos(output_dir: Path, keep: bool):
             f"-DCMAKE_C_COMPILER={xcode_c_compiler}",
             f"-DCMAKE_CXX_COMPILER={xcode_cxx_compiler}",
             *cmake_configure_args(),
-            "-B", str(package_tree.build_dir),
-            "-S", str(package_tree.source_dir),
+            "-B",
+            str(package_tree.build_dir),
+            "-S",
+            str(package_tree.source_dir),
         ]
     )
-
 
 
 def main() -> None:

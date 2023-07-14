@@ -5,6 +5,7 @@ from pathlib import Path
 
 from bazel_tools.tools.python.runfiles import runfiles
 
+
 @dataclass
 class PackageTree:
     root: Path

@@ -4,11 +4,12 @@ This is kept in a separate file so that it can be added to the docker image and
 run directly so that cloning can be cached in an earlier layer.
 """
 import subprocess
+import sys
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
-from vtk_common import vtk_git_ref, vtk_package_tree
+from vtk_common import vtk_git_ref, vtk_package_tree  # noqa: E402
 
 
 def clone_vtk(vtk_git_ref: str, dest_dir: Path):
