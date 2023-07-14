@@ -19,6 +19,10 @@ from bazel_tools.tools.python.runfiles import runfiles
 sys.path.insert(0, str(Path(__file__).parent.absolute() / "image"))
 from vtk_common import vtk_package_tree  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).parent.resolve()))
+from image.vtk_common import architecture, _rlocation, vtk_package_tree, system_is_linux, system_is_macos, _rlocation, vtk_git_ref
+from image.clone_vtk import clone_vtk
+from image.vtk_cmake_args import cmake_configure_args
 
 @dataclass
 class DockerPlatform:
@@ -33,11 +37,13 @@ class DockerPlatform:
 
 # Artifacts that need to be cleaned up. DO NOT MODIFY outside of this file.
 _images_to_remove: list[str] = []
+_paths_to_remove: list[Path] = []
 
 
 @atexit.register
 def _cleanup():
     """Remove any artifacts (docker images) on exit."""
+    # TODO(svenevs): what should we clean up on macOS? (-k arg,paths_to_remove)
     if len(_images_to_remove):
         subprocess.check_call(
             [
@@ -47,15 +53,6 @@ def _cleanup():
                 *_images_to_remove,
             ],
         )
-
-
-def _rlocation(relative_path: str) -> Path:
-    """Return the real path to ``tools/workspace/vtk/{relative_path}``."""
-    manifest = runfiles.Create()
-    resource_path = f"drake/tools/workspace/vtk/{relative_path}"
-    resolved_path = manifest.Rlocation(resource_path)
-    assert resolved_path, f"Missing {resource_path}"
-    return Path(resolved_path).resolve()
 
 
 def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
@@ -124,7 +121,78 @@ def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
 
 
 def build_macos(output_dir: Path, keep: bool):
-    pass
+    # Gather the explicit information needed for directly configuring the CMake
+    # C and C++ compilers, and configuring the Xcode toolchain.
+    xcrun_proc = subprocess.run(
+        [
+            "xcrun", "-sdk", "macosx", "-show-sdk-path"
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    sysroot = xcrun_proc.stdout.decode("utf-8").strip()
+
+    xcrun_proc = subprocess.run(
+        [
+            "xcrun", "-sdk", "macosx", "-find", "gcc",
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    xcode_c_compiler = xcrun_proc.stdout.decode("utf-8").strip()
+
+    xcrun_proc = subprocess.run(
+        [
+            "xcrun", "-sdk", "macosx", "-find", "g++",
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    xcode_cxx_compiler = xcrun_proc.stdout.decode("utf-8").strip()
+
+    print(f"=> Using Xcode toolchain:")
+    print(f"   Sysroot:      {sysroot}")
+    print(f"   C Compiler:   {xcode_c_compiler}")
+    print(f"   C++ Compiler: {xcode_cxx_compiler}")
+
+    package_tree = vtk_package_tree()
+    # TODO(svenevs): what are we wanting to do to save macOS dev time vs clean up.
+    if package_tree.root.exists():
+        raise RuntimeError(
+            f"ERROR: {package_tree.root} already exists.  This directory is retained "
+            "when the --keep argument is given, refusing to delete."
+        )
+    print("=> Creating the following directories:")
+    print(f"  Containment folder: {package_tree.root}")
+    print(f"  VTK source code:    {package_tree.source_dir}")
+    print(f"  VTK build tree:     {package_tree.build_dir}")
+    print(f"  VTK install tree:   {package_tree.install_dir}")
+
+    package_tree.root.mkdir(parents=True, exist_ok=False)
+    clone_vtk(vtk_git_ref(), package_tree.source_dir)
+
+    subprocess.check_call(
+        [
+            "cmake",
+            # TODO(svenevs): yes, this should be used, you need to revisit the
+            # dependencies again.  Seems the externals on macOS are different.
+            # "-Werror",
+            "-G", "Ninja",
+            f"-DCMAKE_INSTALL_PREFIX:PATH={package_tree.install_dir}",
+            "-DCMAKE_BUILD_TYPE:STRING=Release",
+            f"-DCMAKE_OSX_ARCHITECTURES:STRING={architecture()}",
+            "-DCMAKE_INSTALL_LIBDIR=lib",
+            # TODO(svenevs): check NEVER
+            "-DCMAKE_FIND_FRAMEWORK=LAST",
+            f"-DCMAKE_OSX_SYSROOT={sysroot}",
+            f"-DCMAKE_C_COMPILER={xcode_c_compiler}",
+            f"-DCMAKE_CXX_COMPILER={xcode_cxx_compiler}",
+            *cmake_configure_args(),
+            "-B", str(package_tree.build_dir),
+            "-S", str(package_tree.source_dir),
+        ]
+    )
+
 
 
 def main() -> None:
@@ -145,10 +213,15 @@ def main() -> None:
     )
 
     # On Linux we have docker, on macOS we just build in a dedicated location.
-    system_is_linux = platform.system() == "Linux"
-    if system_is_linux:
+    # Verify Linux or macOS once, everything else assumes !Linux => macOS.
+    if system_is_linux():
         keep_help = "permanently tag docker container"
-        keep_help = "keep the VTK build directory"
+    elif system_is_macos():
+        package_tree = vtk_package_tree()
+        keep_help = (
+            "retain the VTK checkout, build, and installation trees "
+            f"contained in {package_tree.root}"
+        )
     else:
         parser.error(f"Unsupported operating system: {platform.system()}")
     parser.add_argument("-k", "--keep", action="store_true", help=keep_help)
@@ -156,7 +229,7 @@ def main() -> None:
     # On Linux we build using docker and can build both, or one / the other.
     # On macOS we cannot build a "fat-binary" with both x86_64 and arm64
     # because of the VTK dependencies.
-    if system_is_linux:
+    if system_is_linux():
         focal = DockerPlatform("focal", "ubuntu:20.04")
         jammy = DockerPlatform("jammy", "ubuntu:22.04")
         all_platforms = [focal, jammy]  # used after parsing args too
@@ -171,7 +244,7 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if system_is_linux:
+    if system_is_linux():
         if args.platform == "all":
             platforms = all_platforms
         else:

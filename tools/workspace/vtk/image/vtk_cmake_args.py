@@ -319,7 +319,7 @@ def cmake_configure_args() -> list[str]:
 
         cmake_args += [
             f"-DEigen3_ROOT={brew_prefix('eigen')}",
-            f"-DPNG_ROOT={brew_prefix('png')}",
+            f"-DPNG_ROOT={brew_prefix('libpng')}",
             f"-DZLIB_ROOT={brew_prefix('zlib')}",
         ]
 

@@ -3,6 +3,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from bazel_tools.tools.python.runfiles import runfiles
 
 @dataclass
 class PackageTree:
@@ -46,6 +47,15 @@ def codename() -> str:
     return "mac"
 
 
+def _rlocation(relative_path: str) -> Path:
+    """Return the real path to ``tools/workspace/vtk/{relative_path}``."""
+    manifest = runfiles.Create()
+    resource_path = f"drake/tools/workspace/vtk/{relative_path}"
+    resolved_path = manifest.Rlocation(resource_path)
+    assert resolved_path, f"Missing {resource_path}"
+    return Path(resolved_path).resolve()
+
+
 def system_is_linux():
     return platform.system() == "Linux"
 
@@ -63,7 +73,9 @@ def vtk_package_tree() -> PackageTree:
         root = Path("/") / "vtk"
     else:
         # We are in tools/workspace/vtk/image/, build in vtk/mac_binary_build.
-        root = Path(__file__).parent.parent.resolve() / "mac_binary_build"
+        this_file_real_path = _rlocation("image/vtk_common.py")
+        tools_workspace_vtk_path = this_file_real_path.parent.parent.resolve()
+        root = tools_workspace_vtk_path / "mac_binary_build"
     source_dir = root / "source"
     build_dir = root / "build"
     install_dir = root / "install"

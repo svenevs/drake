@@ -6,6 +6,8 @@ run directly so that cloning can be cached in an earlier layer.
 import subprocess
 from pathlib import Path
 
+
+sys.path.insert(0, str(Path(__file__).parent.resolve()))
 from vtk_common import vtk_git_ref, vtk_package_tree
 
 
