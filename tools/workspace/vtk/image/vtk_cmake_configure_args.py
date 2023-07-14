@@ -53,7 +53,7 @@ def fortify_flags() -> list[str]:
     return flags
 
 
-def cmake_configure_args() -> list[str]:
+def vtk_cmake_configure_args() -> list[str]:
     """Return the VTK CMake configure arguments for drake.
 
     NOTE: the CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE, and generator choice are

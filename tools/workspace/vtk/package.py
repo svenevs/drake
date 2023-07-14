@@ -18,11 +18,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.resolve() / "image"))
 from clone_vtk import clone_vtk  # noqa: E402
 
-from vtk_cmake_args import cmake_configure_args  # noqa: E402
+from vtk_cmake_configure_args import vtk_cmake_configure_args  # noqa: E402
 
 from vtk_common import (  # noqa: E402
     _rlocation,
     architecture,
+    build_vtk,
+    package_vtk,
     system_is_linux,
     system_is_macos,
     vtk_git_ref,
@@ -183,30 +185,21 @@ def build_macos(output_dir: Path, keep: bool):
     package_tree.root.mkdir(parents=True, exist_ok=False)
     clone_vtk(vtk_git_ref(), package_tree.source_dir)
 
-    subprocess.check_call(
-        [
-            "cmake",
-            # TODO(svenevs): yes, this should be used, you need to revisit the
-            # dependencies again.  Seems the externals on macOS are different.
-            # "-Werror",
-            "-G",
-            "Ninja",
-            f"-DCMAKE_INSTALL_PREFIX:PATH={package_tree.install_dir}",
-            "-DCMAKE_BUILD_TYPE:STRING=Release",
-            f"-DCMAKE_OSX_ARCHITECTURES:STRING={architecture()}",
-            "-DCMAKE_INSTALL_LIBDIR=lib",
-            # TODO(svenevs): check NEVER
-            "-DCMAKE_FIND_FRAMEWORK=LAST",
-            f"-DCMAKE_OSX_SYSROOT={sysroot}",
-            f"-DCMAKE_C_COMPILER={xcode_c_compiler}",
-            f"-DCMAKE_CXX_COMPILER={xcode_cxx_compiler}",
-            *cmake_configure_args(),
-            "-B",
-            str(package_tree.build_dir),
-            "-S",
-            str(package_tree.source_dir),
-        ]
-    )
+    configure_args = [
+        f"-DCMAKE_OSX_ARCHITECTURES:STRING={architecture()}",
+        "-DCMAKE_INSTALL_LIBDIR=lib",
+        # TODO(svenevs): check NEVER
+        "-DCMAKE_FIND_FRAMEWORK=LAST",
+        f"-DCMAKE_OSX_SYSROOT={sysroot}",
+        f"-DCMAKE_C_COMPILER={xcode_c_compiler}",
+        f"-DCMAKE_CXX_COMPILER={xcode_cxx_compiler}",
+        *vtk_cmake_configure_args(),
+    ]
+    build_vtk(package_tree, configure_args)
+    vtk_archive = package_vtk(package_tree)
+    print("SUCCESS:")
+    print(f"  Archive:  {vtk_archive.tar_gz_path}")
+    print(f"  Checksum: {vtk_archive.sha256_sum_path}")
 
 
 def main() -> None:

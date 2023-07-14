@@ -1,5 +1,8 @@
+import hashlib
 import platform
+import shutil
 import subprocess
+import tarfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +15,12 @@ class PackageTree:
     source_dir: Path
     build_dir: Path
     install_dir: Path
+
+
+@dataclass
+class VtkArchive:
+    tar_gz_path: Path
+    sha256_sum_path: Path
 
 
 def architecture() -> str:
@@ -106,3 +115,67 @@ def vtk_archive_name(source_dir: Path) -> str:
     arch = architecture()
     build = build_number()
     return f"vtk-{version}-{code}-{arch}-{build}.tar.gz"
+
+
+def build_vtk(package_tree: PackageTree, configure_args: list[str]):
+    """Build VTK with the specified CMake configure arguments using Ninja."""
+    # Always start with a clean CMake build tree.
+    if package_tree.build_dir.is_dir():
+        shutil.rmtree(package_tree.build_dir)
+    elif package_tree.build_dir.is_file():
+        package_tree.build_dir.unlink()
+    package_tree.build_dir.mkdir(parents=True, exist_ok=False)
+    subprocess.check_call(
+        [
+            "cmake",
+            # TODO(svenevs): this causes issues on macOS.
+            # "-Werror",
+            "-G",
+            "Ninja",
+            f"-DCMAKE_INSTALL_PREFIX:PATH={package_tree.install_dir}",
+            "-DCMAKE_BUILD_TYPE:STRING=Release",
+            *configure_args,
+            "-B",
+            str(package_tree.build_dir),
+            "-S",
+            str(package_tree.source_dir),
+        ]
+    )
+    subprocess.check_call(
+        [
+            "cmake",
+            "--build",
+            str(package_tree.build_dir),
+            "--target",
+            "install",
+        ]  # this comment stops black from making the line too long.
+    )
+
+
+def package_vtk(package_tree: PackageTree) -> VtkArchive:
+    """Create a .tar.gz of the package_tree.install_dir and return the path."""
+    archive_name = vtk_archive_name(package_tree.source_dir)
+    tar_gz_path = package_tree.root / archive_name
+    # Creating the .tgz can take a little while, display something to the user
+    # so it's clear the script isn't stuck.
+    print(f"==> Compressing {package_tree.install_dir} to {tar_gz_path}.")
+    with tarfile.open(tar_gz_path, "w:gz") as tgz:
+        # NOTE: the second argument to `add` is what to rename things as, by
+        # using the empty string it means that all components are stripped.
+        # This way, when extracting, the bin, lib, etc directories are created.
+        tgz.add(package_tree.install_dir, "")
+
+    # Create the accompanying sha256sum verification file.
+    sha256_sum_path = tar_gz_path.parent / f"{tar_gz_path.name}.sha256"
+    print(f"==> Computing sha256sum of {tar_gz_path} into {sha256_sum_path}.")
+    sha256 = hashlib.sha256()
+    with open(tar_gz_path, "rb", buffering=0) as tgz:
+        while True:
+            data = tgz.read(sha256.block_size)
+            if not data:
+                break
+            sha256.update(data)
+    with open(sha256_sum_path) as f:
+        f.write(f"{sha256.hexdigest()} {tar_gz_path.name}\n")
+
+    return VtkArchive(tar_gz_path, sha256_sum_path)
