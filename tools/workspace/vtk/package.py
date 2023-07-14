@@ -101,7 +101,6 @@ def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
             [
                 "docker",
                 "run",
-                "--rm",
                 f"--name={extract_container_name}",
                 tag,
                 "bash",
@@ -112,19 +111,22 @@ def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
             stdout=subprocess.PIPE,
         )
 
-        vtk_paths = ls_proc.stdout.decode("utf-8").splitlines()
-        # There should be 1 vtk-*.tar.gz, and 1 vtk-*.tar.gz.sha256.
-        assert len(vtk_paths) == 2, f"Expected two files in {vtk_paths}."
-        for container_path in vtk_paths:
-            basename = Path(container_path).name
-            subprocess.check_call(
-                [
-                    "docker",
-                    "cp",
-                    f"{tag}:{container_path}",
-                    str(output_dir / basename),
-                ]
-            )
+        try:
+            vtk_paths = ls_proc.stdout.decode("utf-8").splitlines()
+            # There should be 1 vtk-*.tar.gz, and 1 vtk-*.tar.gz.sha256.
+            assert len(vtk_paths) == 2, f"Expected two files in {vtk_paths}."
+            for container_path in vtk_paths:
+                basename = Path(container_path).name
+                subprocess.check_call(
+                    [
+                        "docker",
+                        "cp",
+                        f"{extract_container_name}:{container_path}",
+                        str(output_dir / basename),
+                    ]
+                )
+        finally:
+            subprocess.check_call(["docker", "rm", extract_container_name])
 
 
 def build_macos(output_dir: Path, keep: bool):
