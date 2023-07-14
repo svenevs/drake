@@ -27,7 +27,7 @@ ADD image/clone_vtk.py /image/
 ADD image/vtk_common.py /image/
 RUN python3 /image/clone_vtk.py
 
-ADD image/vtk_cmake_args.py /image/
+ADD image/vtk_cmake_configure_args.py /image/
 ADD image/build_and_package_vtk.py /image/
 RUN python3 /image/build_and_package_vtk.py
 
