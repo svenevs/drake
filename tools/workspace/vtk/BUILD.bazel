@@ -18,7 +18,7 @@ add_lint_tests(
     python_lint_extra_srcs = [
         "find_vtk_headers.py",
         "package.py",
-    ] + glob(["image/*.py"]),
+    ] + glob(["image/*.py"]) + glob(["test/*.py"]),
 )
 
 drake_py_test(
@@ -32,7 +32,7 @@ drake_py_test(
     ],
 )
 
-# TODO(svenevs): are we creating unit tests for the python files?
+# TODO(svenevs): delete this and add an issue to hook mypy up to here.
 drake_py_test(
     name = "lint_python",
     allow_import_unittest = True,

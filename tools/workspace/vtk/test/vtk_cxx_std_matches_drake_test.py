@@ -29,9 +29,11 @@ def parse_cxx_std_from_bazelrc(bazelrc_path: Path):
 
 
 def main():
+    # TODO(svenevs): paths returned are in the sandbox, which is invalid.
+    # I could not figure out how to make these data = [] available either.
     macos_bazelrc_path = _rlocation("tools/macos.bazelrc")
     macos_cxx_std = parse_cxx_std_from_bazelrc(macos_bazelrc_path)
-    assert macos_cxx_std == cxx_std("macos")
+    assert macos_cxx_std == cxx_std("mac")
 
     focal_bazelrc_path = _rlocation("tools/ubuntu-focal.bazelrc")
     focal_cxx_std = parse_cxx_std_from_bazelrc(focal_bazelrc_path)
