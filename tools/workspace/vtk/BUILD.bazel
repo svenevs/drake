@@ -21,6 +21,17 @@ add_lint_tests(
     ] + glob(["image/*.py"]),
 )
 
+drake_py_test(
+    name = "vtk_cxx_std_matches_drake_test",
+    data = [
+        "image/vtk_cmake_configure_args.py",
+        "image/vtk_common.py",
+    ],
+    deps = [
+        "@bazel_tools//tools/python/runfiles",
+    ],
+)
+
 # TODO(svenevs): are we creating unit tests for the python files?
 drake_py_test(
     name = "lint_python",

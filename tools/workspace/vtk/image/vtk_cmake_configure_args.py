@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-import platform
 import subprocess
 
-from vtk_common import system_is_linux, system_is_macos
+from vtk_common import codename, system_is_linux, system_is_macos
 
 
-def cxx_std() -> str:
-    # TODO(svenevs): is there a more coherent way to extract this rather than
-    # just hardcoding things?
-    if system_is_linux():
-        import lsb_release
-
-        codename = lsb_release.get_os_release()["CODENAME"]
-        if codename == "focal":
-            return "17"
-        elif codename == "jammy":
-            return "20"
-        else:
-            raise RuntimeError(f"Unsupported platform '{codename}'.")
-    else:
+def cxx_std(code_name: str) -> str:
+    """Return the C++ standard to compile with for the code_name requested."""
+    # These values are hard-coded and come from the bazelrc associated with the
+    # platform described by code_name.
+    # See also: ../test/vtk_cxx_std_matches_drake_test.py.
+    if code_name == "focal":
+        return "17"
+    elif code_name == "jammy":
+        return "17"
+    elif code_name == "macos":
         return "20"
+
+    raise ValueError(f"Unsupported code name {code_name}.")
 
 
 def fortify_flags() -> list[str]:
@@ -69,7 +66,7 @@ def vtk_cmake_configure_args() -> list[str]:
         "-DBUILD_SHARED_LIBS:BOOL=OFF",
         "-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON",
         # Enforce an exact CMake C++ standard.
-        f"-DCMAKE_CXX_STANDARD:STRING={cxx_std()}",
+        f"-DCMAKE_CXX_STANDARD:STRING={cxx_std(codename())}",
         "-DCMAKE_CXX_STANDARD_REQUIRED:BOOL=ON",
         "-DCMAKE_CXX_EXTENSIONS:BOOL=OFF",
         # VTK installs license files to `share/licenses/PROJECT_NAME`, we want
@@ -307,6 +304,7 @@ def vtk_cmake_configure_args() -> list[str]:
     # dependency (e.g., there is a zlib vendored with Xcode).  Force the
     # find_package(...) to find the right location.
     if system_is_macos():
+
         def brew_prefix(package: str) -> str:
             proc = subprocess.run(
                 ["brew", "--prefix", package],
