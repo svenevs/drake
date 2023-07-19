@@ -3,13 +3,13 @@ from __future__ import annotations
 import platform
 import subprocess
 
-SYSTEM_IS_LINUX = platform.system() == "Linux"
+from vtk_common import system_is_linux, system_is_macos
 
 
 def cxx_std() -> str:
     # TODO(svenevs): is there a more coherent way to extract this rather than
     # just hardcoding things?
-    if SYSTEM_IS_LINUX:
+    if system_is_linux():
         import lsb_release
 
         codename = lsb_release.get_os_release()["CODENAME"]
@@ -36,7 +36,7 @@ def fortify_flags() -> list[str]:
         f"-DCMAKE_CXX_FLAGS:STRING={fortify_compile_flags}",
     ]
 
-    if SYSTEM_IS_LINUX:
+    if system_is_linux():
         fortify_linker_flags = " ".join(
             [
                 "-Wl,-Bsymbolic-functions",
@@ -81,7 +81,7 @@ def vtk_cmake_configure_args() -> list[str]:
         "-DVTK_LEGACY_REMOVE:BOOL=ON",
         "-DVTK_ENABLE_WRAPPING:BOOL=OFF",
         "-DVTK_WRAP_PYTHON:BOOL=OFF",
-        f"-DVTK_USE_COCOA:BOOL={'OFF' if SYSTEM_IS_LINUX else 'ON'}",
+        f"-DVTK_USE_COCOA:BOOL={'ON' if system_is_macos() else 'OFF'}",
         # VTK Modules to include / exclude.
         "-DVTK_BUILD_ALL_MODULES:BOOL=OFF",
         "-DVTK_GROUP_ENABLE_Imaging:STRING=YES",
@@ -278,20 +278,19 @@ def vtk_cmake_configure_args() -> list[str]:
     ]
 
     # Third party dependencies.
-
+    #
     # Dependencies other parts of drake depend on directly get shared.  For the
-    # .tar.gz builds these come from apt-get
-
-    # TODO(svenevs): add a comment somewhere to coordinate the deps between the
-    # files so that developers keep everything in sync.  Maybe to README?
+    # .tar.gz builds these come from apt-get / brew.  Files involved:
     # - macOS
     #     - setup/mac/binary_distribution/Brewfile
     #     - tools/wheel/image/packages-macos
     # - ubuntu
-    #     - tools/workspace/vtk/image/prereqs
+    #     - tools/workspace/vtk/image/prereqs (for the docker build)
     #     - setup/ubuntu/binary_distribution/packages-focal.txt
     #     - setup/ubuntu/binary_distribution/packages-jammy.txt
     #     - tools/wheel/image/packages-focal
+    #
+    # These packages are the only ones we should require -dev from in apt.
     shared_external_dependencies = [
         "eigen",
         "png",
@@ -307,8 +306,7 @@ def vtk_cmake_configure_args() -> list[str]:
     # On macOS find_package(...) will potentially find the *wrong* third party
     # dependency (e.g., there is a zlib vendored with Xcode).  Force the
     # find_package(...) to find the right location.
-    if not SYSTEM_IS_LINUX:
-
+    if system_is_macos():
         def brew_prefix(package: str) -> str:
             proc = subprocess.run(
                 ["brew", "--prefix", package],
@@ -319,8 +317,9 @@ def vtk_cmake_configure_args() -> list[str]:
 
         cmake_args += [
             f"-DEigen3_ROOT={brew_prefix('eigen')}",
-            f"-DPNG_ROOT={brew_prefix('libpng')}",
-            f"-DZLIB_ROOT={brew_prefix('zlib')}",
+            f"-DPNG_ROOT={brew_prefix('libpng')}",  # NOTE: 'libpng', not 'png'
+            # NOTE: do *NOT* set ZLIB_ROOT, that will get found in Xcode due to
+            # ../package.py:build_macos defining CMAKE_OSX_SYSROOT.
         ]
 
     # Third party libraries that are only needed for VTK are built by VTK.
@@ -354,8 +353,6 @@ def vtk_cmake_configure_args() -> list[str]:
             f"-DVTK_MODULE_USE_EXTERNAL_VTK_{external}:BOOL=OFF",
         ]
 
-    # TODO(svenevs): re-gather the list of vtk third party modules we want to
-    # prevent from being added forcfully.  Metaio / netcdf? pugixml theora
     prevent_external_dependencies = [
         "cgns",
         "cli11",
@@ -381,8 +378,18 @@ def vtk_cmake_configure_args() -> list[str]:
             f"-DVTK_MODULE_USE_EXTERNAL_VTK_{external}:BOOL=ON",
         ]
 
-    # TODO(svenevs): add loop that checks the arrays and makes sure there is no
-    # overlap.  If developer adds something to both shared_external_libraries
-    # and private_external_libraries, the private version will triumph (cmake
-    # args come afterward).  Same for `prevent`...
+    # Because of how the VTK module system works, if a dependency shows up in
+    # both `private deps` and `prevent deps`, the latter CMake configure
+    # argument will take precedence.  This is hard to catch when developing the
+    # list of dependencies, enforce it automatically.
+    private_dependency_set = set(private_external_dependencies)
+    prevent_dependency_set = set(prevent_external_dependencies)
+    intersection = private_dependency_set & prevent_dependency_set
+    if len(intersection) > 0:
+        raise RuntimeError(
+            "Developer error, `private_external_dependencies` and "
+            "`prevent_external_dependencies` may not have overlapping "
+            f"elements.  Duplicate(s): {intersection}"
+        )
+
     return cmake_args

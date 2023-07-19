@@ -5,6 +5,7 @@ import argparse
 import atexit
 import os
 import platform
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -50,8 +51,7 @@ _paths_to_remove: list[Path] = []
 
 @atexit.register
 def _cleanup():
-    """Remove any artifacts (docker images) on exit."""
-    # TODO(svenevs): what should we clean up on macOS? (-k arg,paths_to_remove)
+    """Remove any artifacts (docker images, macOS build trees) on exit."""
     if len(_images_to_remove):
         subprocess.check_call(
             [
@@ -61,6 +61,20 @@ def _cleanup():
                 *_images_to_remove,
             ],
         )
+    if len(_paths_to_remove):
+        could_not_remove = []
+        for p in _paths_to_remove:
+            if p.is_dir():
+                shutil.rmtree(p)
+            elif p.is_file() or p.is_symlink():
+                p.unlink()
+            if p.exists():
+                could_not_remove.append(p)
+
+        if could_not_remove:
+            raise RuntimeError(
+                f"Unable to remove the path(s): {could_not_remove}"
+            )
 
 
 def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
@@ -75,7 +89,7 @@ def build_linux(output_dir: Path, platforms: list[DockerPlatform], keep: bool):
         tag = f"vtk:{time}-{salt}-{docker_platform.codename}"
 
         # Build and tag the vtk image.
-        print(f"==> Building: {tag}")
+        print(f"=> Building: {tag}")
         subprocess.check_call(
             [
                 "docker",
@@ -171,25 +185,49 @@ def build_macos(output_dir: Path, keep: bool):
     print(f"   C++ Compiler: {xcode_cxx_compiler}")
 
     package_tree = vtk_package_tree()
-    # TODO(svenevs): what to clean up vs allow deleting (save dev time)?
-    if package_tree.root.exists():
-        raise RuntimeError(
-            f"ERROR: {package_tree.root} already exists.  This directory is "
-            "retained when the --keep argument is given, refusing to delete."
-        )
-    print("=> Creating the following directories:")
-    print(f"  Containment folder: {package_tree.root}")
-    print(f"  VTK source code:    {package_tree.source_dir}")
-    print(f"  VTK build tree:     {package_tree.build_dir}")
-    print(f"  VTK install tree:   {package_tree.install_dir}")
+    if not keep:
+        _paths_to_remove.append(package_tree.root)
 
-    package_tree.root.mkdir(parents=True, exist_ok=False)
-    clone_vtk(vtk_git_ref(), package_tree.source_dir)
+    print("=> Creating the following directories:")
+    print(f"   Containment folder: {package_tree.root}")
+    print(f"   VTK source code:    {package_tree.source_dir}")
+    print(f"   VTK build tree:     {package_tree.build_dir}")
+    print(f"   VTK install tree:   {package_tree.install_dir}")
+
+    # Make sure we have the root available.
+    if not package_tree.root.exists():
+        package_tree.root.mkdir(parents=True, exist_ok=False)
+    elif not package_tree.root.is_dir():
+        raise RuntimeError(
+            f"{package_tree.root} exists, but is not a directory. Refusing to "
+            "overwrite, please delete manually and rerun."
+        )
+
+    # Only clone if we need to.  If it is being run after a --keep, then the
+    # clone is already there.  Just run `checkout` to ensure we have the right
+    # worktree available.
+    vtk_ref = vtk_git_ref()
+    if not package_tree.source_dir.exists():
+        clone_vtk(vtk_ref, package_tree.source_dir)
+    elif package_tree.source_dir.is_dir():
+        subprocess.check_call(
+            [
+                "git",
+                "checkout",
+                vtk_ref,
+            ],
+            cwd=package_tree.source_dir,
+        )
+    else:
+        raise RuntimeError(
+            f"{package_tree.source_dir} exists, but is not a directory. "
+            "Refusing to overwrite, please delete manually and rerun."
+        )
 
     configure_args = [
         f"-DCMAKE_OSX_ARCHITECTURES:STRING={architecture()}",
         "-DCMAKE_INSTALL_LIBDIR=lib",
-        # TODO(svenevs): check NEVER
+        # NOTE: OpenGL is a framework (we cannot use NEVER).
         "-DCMAKE_FIND_FRAMEWORK=LAST",
         f"-DCMAKE_OSX_SYSROOT={sysroot}",
         f"-DCMAKE_C_COMPILER={xcode_c_compiler}",
@@ -198,9 +236,18 @@ def build_macos(output_dir: Path, keep: bool):
     ]
     build_vtk(package_tree, configure_args)
     vtk_archive = package_vtk(package_tree)
+
+    # package_vtk created the archive in the package_tree.root directory, move
+    # the final product back to where the user requested with --output-dir.
+    tar_gz_dest = output_dir / vtk_archive.tar_gz_path.name
+    vtk_archive.tar_gz_path.rename(tar_gz_dest)
+
+    sha256_sum_dest = output_dir / vtk_archive.sha256_sum_path.name
+    vtk_archive.sha256_sum_path.rename(sha256_sum_dest)
+
     print("SUCCESS:")
-    print(f"  Archive:  {vtk_archive.tar_gz_path}")
-    print(f"  Checksum: {vtk_archive.sha256_sum_path}")
+    print(f"  Archive:  {tar_gz_dest}")
+    print(f"  Checksum: {sha256_sum_dest}")
 
 
 def main() -> None:
