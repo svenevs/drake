@@ -14,7 +14,7 @@ def cxx_std(code_name: str) -> str:
         return "17"
     elif code_name == "jammy":
         return "17"
-    elif code_name == "macos":
+    elif code_name == "mac":
         return "20"
 
     raise ValueError(f"Unsupported code name {code_name}.")
