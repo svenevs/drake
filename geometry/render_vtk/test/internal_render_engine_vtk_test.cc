@@ -1,4 +1,4 @@
-#include "drake/geometry/render_vtk/internal_render_engine_vtk.h"
+#include "drake/geometry/render_vtk/internal_render_engine_vtk_tester.h"
 
 #include <cstring>
 #include <limits>
@@ -48,29 +48,29 @@ namespace render_vtk {
 namespace internal {
 
 // Use friend access to grab actors.
-class RenderEngineVtkTester {
- public:
-  // This returns the first color actor associated with the given `id` (if there
-  // are multiple actors for the geometry).
-  static vtkActor* GetColorActor(const RenderEngineVtk& renderer,
-                                 GeometryId id) {
-    // First 0 is the color index, second is the first actor.
-    vtkActor* actor = renderer.props_.at(id).at(0).parts.at(0).actor.Get();
-    DRAKE_DEMAND(actor != nullptr);
-    return actor;
-  }
+// class RenderEngineVtkTester {
+//  public:
+//   // This returns the first color actor associated with the given `id` (if there
+//   // are multiple actors for the geometry).
+//   static vtkActor* GetColorActor(const RenderEngineVtk& renderer,
+//                                  GeometryId id) {
+//     // First 0 is the color index, second is the first actor.
+//     vtkActor* actor = renderer.props_.at(id).at(0).parts.at(0).actor.Get();
+//     DRAKE_DEMAND(actor != nullptr);
+//     return actor;
+//   }
 
-  // Return all of the colors actors associated with the given geometry id.
-  static std::vector<vtkActor*> GetColorActors(const RenderEngineVtk& renderer,
-                                               GeometryId id) {
-    const auto& color_prop = renderer.props_.at(id).at(0);
-    std::vector<vtkActor*> actors;
-    for (const auto& part : color_prop.parts) {
-      actors.push_back(part.actor.Get());
-    }
-    return actors;
-  }
-};
+//   // Return all of the colors actors associated with the given geometry id.
+//   static std::vector<vtkActor*> GetColorActors(const RenderEngineVtk& renderer,
+//                                                GeometryId id) {
+//     const auto& color_prop = renderer.props_.at(id).at(0);
+//     std::vector<vtkActor*> actors;
+//     for (const auto& part : color_prop.parts) {
+//       actors.push_back(part.actor.Get());
+//     }
+//     return actors;
+//   }
+// };
 
 namespace {
 
@@ -101,459 +101,459 @@ using systems::sensors::ImageTraits;
 using systems::sensors::PixelType;
 using visualization::ColorizeDepthImage;
 
-// Default camera properties.
-const int kWidth = 640;
-const int kHeight = 480;
-const double kClipNear = 0.1;
-const double kClipFar = 100.0;
-const double kZNear = 0.5;
-const double kZFar = 5.;
-const double kFovY = M_PI_4;
+// // Default camera properties.
+// const int kWidth = 640;
+// const int kHeight = 480;
+// const double kClipNear = 0.1;
+// const double kClipFar = 100.0;
+// const double kZNear = 0.5;
+// const double kZFar = 5.;
+// const double kFovY = M_PI_4;
 
-// The following tolerance is used due to a precision difference between Ubuntu
-// Linux and Mac OSX.
-const double kColorPixelTolerance = 1.001;
-// NOTE: The depth tolerance is this large mostly due to the combination of
-// several factors:
-//   - the sphere test (sphere against terrain)
-//   - The even-valued window dimensions
-//   - the tests against various camera properties
-// The explanation is as follows. The distance to the sphere is only exactly
-// 2 at the point of the sphere directly underneath the camera (the sphere's
-// "peak"). However, with an even-valued window dimension, we never really
-// sample that point. We sample the center of pixels all evenly arrayed around
-// that point. So, that introduces some error. This error is further increased
-// in ellipsoid tests when sampling around the elongated ends. As the image gets
-// *smaller* the pixels get bigger and so the distance away from the peak center
-// increases, which, in turn, increase the measured distance for the fragment.
-// This tolerance accounts for the test case where one image has pixels that are
-// *4X* larger (in area) than the default image size.
-const double kDepthTolerance = 1e-3;
+// // The following tolerance is used due to a precision difference between Ubuntu
+// // Linux and Mac OSX.
+// const double kColorPixelTolerance = 1.001;
+// // NOTE: The depth tolerance is this large mostly due to the combination of
+// // several factors:
+// //   - the sphere test (sphere against terrain)
+// //   - The even-valued window dimensions
+// //   - the tests against various camera properties
+// // The explanation is as follows. The distance to the sphere is only exactly
+// // 2 at the point of the sphere directly underneath the camera (the sphere's
+// // "peak"). However, with an even-valued window dimension, we never really
+// // sample that point. We sample the center of pixels all evenly arrayed around
+// // that point. So, that introduces some error. This error is further increased
+// // in ellipsoid tests when sampling around the elongated ends. As the image gets
+// // *smaller* the pixels get bigger and so the distance away from the peak center
+// // increases, which, in turn, increase the measured distance for the fragment.
+// // This tolerance accounts for the test case where one image has pixels that are
+// // *4X* larger (in area) than the default image size.
+// const double kDepthTolerance = 1e-3;
 
-// An RGBA color denoted using four `int`s, offering nice conversion
-// constructors and operators to ease the pain of creating test values.
-struct TestColor {
-  // Constructs from three or four `int`s.
-  constexpr TestColor(int r_in, int g_in, int b_in, int a_in = 255)
-      : r(r_in), g(g_in), b(b_in), a(a_in) {}
+// // An RGBA color denoted using four `int`s, offering nice conversion
+// // constructors and operators to ease the pain of creating test values.
+// struct TestColor {
+//   // Constructs from three or four `int`s.
+//   constexpr TestColor(int r_in, int g_in, int b_in, int a_in = 255)
+//       : r(r_in), g(g_in), b(b_in), a(a_in) {}
 
-  // Constructs from an array of four bytes.
-  explicit TestColor(const uint8_t* p) : r(p[0]), g(p[1]), b(p[2]), a(p[3]) {}
+//   // Constructs from an array of four bytes.
+//   explicit TestColor(const uint8_t* p) : r(p[0]), g(p[1]), b(p[2]), a(p[3]) {}
 
-  // Constructs from a vector of four doubles (each in the range [0..1]).
-  explicit TestColor(const Vector4d& norm_color)
-      : r(static_cast<int>(norm_color(0) * 255)),
-        g(static_cast<int>(norm_color(1) * 255)),
-        b(static_cast<int>(norm_color(2) * 255)),
-        a(static_cast<int>(norm_color(3) * 255)) {}
+//   // Constructs from a vector of four doubles (each in the range [0..1]).
+//   explicit TestColor(const Vector4d& norm_color)
+//       : r(static_cast<int>(norm_color(0) * 255)),
+//         g(static_cast<int>(norm_color(1) * 255)),
+//         b(static_cast<int>(norm_color(2) * 255)),
+//         a(static_cast<int>(norm_color(3) * 255)) {}
 
-  // This implicit conversion is extremely convenient.
-  // NOLINTNEXTLINE(runtime/explicit)
-  TestColor(const Rgba& rgba) : TestColor(rgba.rgba()) {}
+//   // This implicit conversion is extremely convenient.
+//   // NOLINTNEXTLINE(runtime/explicit)
+//   TestColor(const Rgba& rgba) : TestColor(rgba.rgba()) {}
 
-  // Converts back to an Rgba.
-  Rgba ToRgba() const {
-    return Rgba(r / 255.0, g / 255.0, b / 255.0, a / 255.0);
-  }
+//   // Converts back to an Rgba.
+//   Rgba ToRgba() const {
+//     return Rgba(r / 255.0, g / 255.0, b / 255.0, a / 255.0);
+//   }
 
-  bool operator==(const TestColor& c) const {
-    return r == c.r && g == c.g && b == c.b && a == c.a;
-  }
+//   bool operator==(const TestColor& c) const {
+//     return r == c.r && g == c.g && b == c.b && a == c.a;
+//   }
 
-  bool operator!=(const TestColor& c) const { return !(*this == c); }
+//   bool operator!=(const TestColor& c) const { return !(*this == c); }
 
-  int r{0};
-  int g{0};
-  int b{0};
-  int a{255};
-};
+//   int r{0};
+//   int g{0};
+//   int b{0};
+//   int a{255};
+// };
 
-std::ostream& operator<<(std::ostream& out, const TestColor& c) {
-  out << "(" << c.r << ", " << c.g << ", " << c.b << ", " << c.a << ")";
-  return out;
-}
+// std::ostream& operator<<(std::ostream& out, const TestColor& c) {
+//   out << "(" << c.r << ", " << c.g << ", " << c.b << ", " << c.a << ")";
+//   return out;
+// }
 
-// Background (sky) and terrain colors.
-constexpr TestColor kBgColor{254, 127, 0};
+// // Background (sky) and terrain colors.
+// constexpr TestColor kBgColor{254, 127, 0};
 
-// We need a color that we can see the effects of illumination on.
-constexpr TestColor kTerrainColor{127, 127, 153};
+// // We need a color that we can see the effects of illumination on.
+// constexpr TestColor kTerrainColor{127, 127, 153};
 
-// box.png contains a single pixel with the color (4, 241, 33). If the image
-// changes, the expected color would likewise have to change.
-constexpr TestColor kTextureColor{4, 241, 33};
+// // box.png contains a single pixel with the color (4, 241, 33). If the image
+// // changes, the expected color would likewise have to change.
+// constexpr TestColor kTextureColor{4, 241, 33};
 
-// Provide a default visual color for these tests -- it is intended to be
-// different from the default color of the VTK render engine.
-constexpr TestColor kDefaultVisualColor{229, 229, 229};
+// // Provide a default visual color for these tests -- it is intended to be
+// // different from the default color of the VTK render engine.
+// constexpr TestColor kDefaultVisualColor{229, 229, 229};
 
-const float kDefaultDistance{3.f};
+// const float kDefaultDistance{3.f};
 
-const RenderLabel kDefaultLabel{13531};
+// const RenderLabel kDefaultLabel{13531};
 
-// Values to be used with the "centered shape" tests.
-// The amount inset from the edge of the images to *still* expect ground plane
-// values.
-static constexpr int kInset{10};
+// // Values to be used with the "centered shape" tests.
+// // The amount inset from the edge of the images to *still* expect ground plane
+// // values.
+// static constexpr int kInset{10};
 
-// Holds `(x, y)` indices of the screen coordinate system where the ranges of
-// `x` and `y` are [0, image_width) and [0, image_height) respectively.
-struct ScreenCoord {
-  int x{};
-  int y{};
-};
+// // Holds `(x, y)` indices of the screen coordinate system where the ranges of
+// // `x` and `y` are [0, image_width) and [0, image_height) respectively.
+// struct ScreenCoord {
+//   int x{};
+//   int y{};
+// };
 
-std::ostream& operator<<(std::ostream& out, const ScreenCoord& c) {
-  out << "(" << c.x << ", " << c.y << ")";
-  return out;
-}
+// std::ostream& operator<<(std::ostream& out, const ScreenCoord& c) {
+//   out << "(" << c.x << ", " << c.y << ")";
+//   return out;
+// }
 
-// Tests color within tolerance.
-bool IsColorNear(const TestColor& expected, const TestColor& tested,
-                 double tolerance = kColorPixelTolerance) {
-  using std::abs;
-  return (abs(expected.r - tested.r) < tolerance &&
-          abs(expected.g - tested.g) < tolerance &&
-          abs(expected.b - tested.b) < tolerance &&
-          abs(expected.a - tested.a) < tolerance);
-}
+// // Tests color within tolerance.
+// bool IsColorNear(const TestColor& expected, const TestColor& tested,
+//                  double tolerance = kColorPixelTolerance) {
+//   using std::abs;
+//   return (abs(expected.r - tested.r) < tolerance &&
+//           abs(expected.g - tested.g) < tolerance &&
+//           abs(expected.b - tested.b) < tolerance &&
+//           abs(expected.a - tested.a) < tolerance);
+// }
 
-// Tests that the color in the given `image` located at screen coordinate `p`
-// matches the `expected` color to within the given `tolerance`.
-::testing::AssertionResult CompareColor(
-    const TestColor& expected, const ImageRgba8U& image, const ScreenCoord& p,
-    double tolerance = kColorPixelTolerance) {
-  TestColor tested(image.at(p.x, p.y));
-  if (IsColorNear(expected, tested, tolerance)) {
-    return ::testing::AssertionSuccess();
-  }
-  return ::testing::AssertionFailure()
-         << "Expected: " << expected << " at " << p << ", tested: " << tested
-         << " with tolerance: " << tolerance;
-}
+// // Tests that the color in the given `image` located at screen coordinate `p`
+// // matches the `expected` color to within the given `tolerance`.
+// ::testing::AssertionResult CompareColor(
+//     const TestColor& expected, const ImageRgba8U& image, const ScreenCoord& p,
+//     double tolerance = kColorPixelTolerance) {
+//   TestColor tested(image.at(p.x, p.y));
+//   if (IsColorNear(expected, tested, tolerance)) {
+//     return ::testing::AssertionSuccess();
+//   }
+//   return ::testing::AssertionFailure()
+//          << "Expected: " << expected << " at " << p << ", tested: " << tested
+//          << " with tolerance: " << tolerance;
+// }
 
-// This test suite facilitates a test with a ground plane and floating shape.
-// The camera is positioned above the shape looking straight down. All
-// of the images produced from these tests should have the following properties:
-//   1. The shape is centered.
-//   2. The ground plane fills the whole background (i.e., no background color
-//      should be visible), except for noted exceptions.
-//   3. The rendered shape should be smaller than the full image size with a
-//      minimum number of pixels of ground plane between the shape and the edge
-//      of the image. The minimum number of pixels is defined by kInset.
-//
-// The tests examine the rendered images and tests some discrete pixels, mapped
-// to the image size (w, h):
-//   1. A "center" pixel (x, y) such that x = w / 2 and y = h / 2.
-//   2. Border pixels (xᵢ, yᵢ) which are pixels inset from each corner:
-//      e.g., (i, i), (w - i - 1, i), (w - i - 1, h - i - 1), (i, h - i - 1),
-//      for an inset value of `i` pixels.
-class RenderEngineVtkTest : public ::testing::Test {
- public:
-  RenderEngineVtkTest()
-      : color_(kWidth, kHeight),
-        depth_(kWidth, kHeight),
-        label_(kWidth, kHeight),
-        // Looking straight down from kDefaultDistance meters above the ground.
-        X_WC_(RotationMatrixd{AngleAxisd(M_PI, Vector3d::UnitY()) *
-                              AngleAxisd(-M_PI_2, Vector3d::UnitZ())},
-              {0, 0, kDefaultDistance}),
-        geometry_id_(GeometryId::get_new_id()) {}
+// // This test suite facilitates a test with a ground plane and floating shape.
+// // The camera is positioned above the shape looking straight down. All
+// // of the images produced from these tests should have the following properties:
+// //   1. The shape is centered.
+// //   2. The ground plane fills the whole background (i.e., no background color
+// //      should be visible), except for noted exceptions.
+// //   3. The rendered shape should be smaller than the full image size with a
+// //      minimum number of pixels of ground plane between the shape and the edge
+// //      of the image. The minimum number of pixels is defined by kInset.
+// //
+// // The tests examine the rendered images and tests some discrete pixels, mapped
+// // to the image size (w, h):
+// //   1. A "center" pixel (x, y) such that x = w / 2 and y = h / 2.
+// //   2. Border pixels (xᵢ, yᵢ) which are pixels inset from each corner:
+// //      e.g., (i, i), (w - i - 1, i), (w - i - 1, h - i - 1), (i, h - i - 1),
+// //      for an inset value of `i` pixels.
+// class RenderEngineVtkTest : public ::testing::Test {
+//  public:
+//   RenderEngineVtkTest()
+//       : color_(kWidth, kHeight),
+//         depth_(kWidth, kHeight),
+//         label_(kWidth, kHeight),
+//         // Looking straight down from kDefaultDistance meters above the ground.
+//         X_WC_(RotationMatrixd{AngleAxisd(M_PI, Vector3d::UnitY()) *
+//                               AngleAxisd(-M_PI_2, Vector3d::UnitZ())},
+//               {0, 0, kDefaultDistance}),
+//         geometry_id_(GeometryId::get_new_id()) {}
 
- protected:
-  // Method to allow the normal case (render with the built-in renderer against
-  // the default camera) to the member images with default window visibility.
-  // This interface allows that to be completely reconfigured by the calling
-  // test.
-  void Render(RenderEngineVtk* renderer = nullptr,
-              const DepthRenderCamera* camera_in = nullptr,
-              ImageRgba8U* color_out = nullptr,
-              ImageDepth32F* depth_out = nullptr,
-              ImageLabel16I* label_out = nullptr) {
-    if (!renderer) renderer = renderer_.get();
-    const DepthRenderCamera& depth_camera =
-        camera_in ? *camera_in : depth_camera_;
-    const ColorRenderCamera color_camera(depth_camera.core(),
-                                         FLAGS_show_window);
-    ImageRgba8U* color = color_out ? color_out : &color_;
-    ImageDepth32F* depth = depth_out ? depth_out : &depth_;
-    ImageLabel16I* label = label_out ? label_out : &label_;
-    EXPECT_NO_THROW(renderer->RenderDepthImage(depth_camera, depth));
-    EXPECT_NO_THROW(renderer->RenderLabelImage(color_camera, label));
-    EXPECT_NO_THROW(renderer->RenderColorImage(color_camera, color));
-    if (FLAGS_sleep > 0) sleep(FLAGS_sleep);
-  }
+//  protected:
+//   // Method to allow the normal case (render with the built-in renderer against
+//   // the default camera) to the member images with default window visibility.
+//   // This interface allows that to be completely reconfigured by the calling
+//   // test.
+//   void Render(RenderEngineVtk* renderer = nullptr,
+//               const DepthRenderCamera* camera_in = nullptr,
+//               ImageRgba8U* color_out = nullptr,
+//               ImageDepth32F* depth_out = nullptr,
+//               ImageLabel16I* label_out = nullptr) {
+//     if (!renderer) renderer = renderer_.get();
+//     const DepthRenderCamera& depth_camera =
+//         camera_in ? *camera_in : depth_camera_;
+//     const ColorRenderCamera color_camera(depth_camera.core(),
+//                                          FLAGS_show_window);
+//     ImageRgba8U* color = color_out ? color_out : &color_;
+//     ImageDepth32F* depth = depth_out ? depth_out : &depth_;
+//     ImageLabel16I* label = label_out ? label_out : &label_;
+//     EXPECT_NO_THROW(renderer->RenderDepthImage(depth_camera, depth));
+//     EXPECT_NO_THROW(renderer->RenderLabelImage(color_camera, label));
+//     EXPECT_NO_THROW(renderer->RenderColorImage(color_camera, color));
+//     if (FLAGS_sleep > 0) sleep(FLAGS_sleep);
+//   }
 
-  // Confirms that all pixels in the member color image have the same value.
-  void VerifyUniformColor(const TestColor& pixel,
-                          const ImageRgba8U* color = nullptr) {
-    if (color == nullptr) color = &color_;
-    for (int y = 0; y < color->height(); ++y) {
-      for (int x = 0; x < color->width(); ++x) {
-        ASSERT_TRUE(CompareColor(pixel, *color, ScreenCoord{x, y}));
-      }
-    }
-  }
+//   // Confirms that all pixels in the member color image have the same value.
+//   void VerifyUniformColor(const TestColor& pixel,
+//                           const ImageRgba8U* color = nullptr) {
+//     if (color == nullptr) color = &color_;
+//     for (int y = 0; y < color->height(); ++y) {
+//       for (int x = 0; x < color->width(); ++x) {
+//         ASSERT_TRUE(CompareColor(pixel, *color, ScreenCoord{x, y}));
+//       }
+//     }
+//   }
 
-  // Confirms that all pixels in the member label image have the same value.
-  void VerifyUniformLabel(int16_t value, const ImageLabel16I* label = nullptr) {
-    if (label == nullptr) label = &label_;
-    for (int y = 0; y < label->height(); ++y) {
-      for (int x = 0; x < label->width(); ++x) {
-        ASSERT_EQ(label->at(x, y)[0], value)
-            << "At pixel (" << x << ", " << y << ")";
-      }
-    }
-  }
+//   // Confirms that all pixels in the member label image have the same value.
+//   void VerifyUniformLabel(int16_t value, const ImageLabel16I* label = nullptr) {
+//     if (label == nullptr) label = &label_;
+//     for (int y = 0; y < label->height(); ++y) {
+//       for (int x = 0; x < label->width(); ++x) {
+//         ASSERT_EQ(label->at(x, y)[0], value)
+//             << "At pixel (" << x << ", " << y << ")";
+//       }
+//     }
+//   }
 
-  // Confirms that all pixels in the member depth image have the same value.
-  void VerifyUniformDepth(float value, const ImageDepth32F* depth = nullptr) {
-    if (depth == nullptr) depth = &depth_;
-    if (value == std::numeric_limits<float>::infinity()) {
-      for (int y = 0; y < depth->height(); ++y) {
-        for (int x = 0; x < depth->width(); ++x) {
-          ASSERT_EQ(depth->at(x, y)[0], value);
-        }
-      }
-    } else {
-      for (int y = 0; y < depth->height(); ++y) {
-        for (int x = 0; x < depth->width(); ++x) {
-          ASSERT_NEAR(depth->at(x, y)[0], value, kDepthTolerance);
-        }
-      }
-    }
-  }
+//   // Confirms that all pixels in the member depth image have the same value.
+//   void VerifyUniformDepth(float value, const ImageDepth32F* depth = nullptr) {
+//     if (depth == nullptr) depth = &depth_;
+//     if (value == std::numeric_limits<float>::infinity()) {
+//       for (int y = 0; y < depth->height(); ++y) {
+//         for (int x = 0; x < depth->width(); ++x) {
+//           ASSERT_EQ(depth->at(x, y)[0], value);
+//         }
+//       }
+//     } else {
+//       for (int y = 0; y < depth->height(); ++y) {
+//         for (int x = 0; x < depth->width(); ++x) {
+//           ASSERT_NEAR(depth->at(x, y)[0], value, kDepthTolerance);
+//         }
+//       }
+//     }
+//   }
 
-  // Compute the set of outliers for a given set of camera properties.
-  static std::vector<ScreenCoord> GetOutliers(const CameraInfo& intrinsics) {
-    return std::vector<ScreenCoord>{
-        {kInset, kInset},
-        {kInset, intrinsics.height() - kInset - 1},
-        {intrinsics.width() - kInset - 1, intrinsics.height() - kInset - 1},
-        {intrinsics.width() - kInset - 1, kInset}};
-  }
+//   // Compute the set of outliers for a given set of camera properties.
+//   static std::vector<ScreenCoord> GetOutliers(const CameraInfo& intrinsics) {
+//     return std::vector<ScreenCoord>{
+//         {kInset, kInset},
+//         {kInset, intrinsics.height() - kInset - 1},
+//         {intrinsics.width() - kInset - 1, intrinsics.height() - kInset - 1},
+//         {intrinsics.width() - kInset - 1, kInset}};
+//   }
 
-  // Compute the inlier for the given set of camera properties.
-  static ScreenCoord GetInlier(const CameraInfo& intrinsics) {
-    return {intrinsics.width() / 2, intrinsics.height() / 2};
-  }
+//   // Compute the inlier for the given set of camera properties.
+//   static ScreenCoord GetInlier(const CameraInfo& intrinsics) {
+//     return {intrinsics.width() / 2, intrinsics.height() / 2};
+//   }
 
-  // Tests that the depth value in the given `image` at the given `coord` is
-  // the expected depth to within a tolerance. Handles the special case where
-  // the expected distance is infinity.
-  static ::testing::AssertionResult IsExpectedDepth(const ImageDepth32F& image,
-                                                    const ScreenCoord& coord,
-                                                    float expected_depth,
-                                                    float tolerance) {
-    const float actual_depth = image.at(coord.x, coord.y)[0];
-    if (expected_depth == std::numeric_limits<float>::infinity()) {
-      if (actual_depth == expected_depth) {
-        return ::testing::AssertionSuccess();
-      } else {
-        return ::testing::AssertionFailure()
-               << "Expected depth at " << coord
-               << " to be infinity. Found: " << actual_depth;
-      }
-    } else {
-      float delta = std::abs(expected_depth - actual_depth);
-      if (delta <= tolerance) {
-        return ::testing::AssertionSuccess();
-      } else {
-        return ::testing::AssertionFailure()
-               << "Expected depth at " << coord << " to be " << expected_depth
-               << ". Found " << actual_depth << ". Difference " << delta
-               << " is greater than tolerance " << tolerance;
-      }
-    }
-  }
+//   // Tests that the depth value in the given `image` at the given `coord` is
+//   // the expected depth to within a tolerance. Handles the special case where
+//   // the expected distance is infinity.
+//   static ::testing::AssertionResult IsExpectedDepth(const ImageDepth32F& image,
+//                                                     const ScreenCoord& coord,
+//                                                     float expected_depth,
+//                                                     float tolerance) {
+//     const float actual_depth = image.at(coord.x, coord.y)[0];
+//     if (expected_depth == std::numeric_limits<float>::infinity()) {
+//       if (actual_depth == expected_depth) {
+//         return ::testing::AssertionSuccess();
+//       } else {
+//         return ::testing::AssertionFailure()
+//                << "Expected depth at " << coord
+//                << " to be infinity. Found: " << actual_depth;
+//       }
+//     } else {
+//       float delta = std::abs(expected_depth - actual_depth);
+//       if (delta <= tolerance) {
+//         return ::testing::AssertionSuccess();
+//       } else {
+//         return ::testing::AssertionFailure()
+//                << "Expected depth at " << coord << " to be " << expected_depth
+//                << ". Found " << actual_depth << ". Difference " << delta
+//                << " is greater than tolerance " << tolerance;
+//       }
+//     }
+//   }
 
-  // Verifies the "outlier" pixels for the given camera belong to the ground
-  // plane. If images are provided, the given images will be tested, otherwise
-  // the member images will be tested.
-  void VerifyOutliers(const RenderEngineVtk& renderer,
-                      const DepthRenderCamera& camera, const char* name,
-                      const ImageRgba8U* color_in = nullptr,
-                      const ImageDepth32F* depth_in = nullptr,
-                      const ImageLabel16I* label_in = nullptr) const {
-    const ImageRgba8U& color = color_in ? *color_in : color_;
-    const ImageDepth32F& depth = depth_in ? *depth_in : depth_;
-    const ImageLabel16I& label = label_in ? *label_in : label_;
+//   // Verifies the "outlier" pixels for the given camera belong to the ground
+//   // plane. If images are provided, the given images will be tested, otherwise
+//   // the member images will be tested.
+//   void VerifyOutliers(const RenderEngineVtk& renderer,
+//                       const DepthRenderCamera& camera, const char* name,
+//                       const ImageRgba8U* color_in = nullptr,
+//                       const ImageDepth32F* depth_in = nullptr,
+//                       const ImageLabel16I* label_in = nullptr) const {
+//     const ImageRgba8U& color = color_in ? *color_in : color_;
+//     const ImageDepth32F& depth = depth_in ? *depth_in : depth_;
+//     const ImageLabel16I& label = label_in ? *label_in : label_;
 
-    for (const auto& screen_coord : GetOutliers(camera.core().intrinsics())) {
-      const int x = screen_coord.x;
-      const int y = screen_coord.y;
-      EXPECT_TRUE(CompareColor(expected_outlier_color_, color, screen_coord))
-          << "Color at: " << screen_coord << " for test: " << name;
-      EXPECT_TRUE(IsExpectedDepth(depth, screen_coord, expected_outlier_depth_,
-                                  kDepthTolerance))
-          << "Depth at: " << screen_coord << " for test: " << name;
-      EXPECT_EQ(label.at(x, y)[0], expected_outlier_label_)
-          << "Label at: " << screen_coord << " for test: " << name;
-    }
-  }
+//     for (const auto& screen_coord : GetOutliers(camera.core().intrinsics())) {
+//       const int x = screen_coord.x;
+//       const int y = screen_coord.y;
+//       EXPECT_TRUE(CompareColor(expected_outlier_color_, color, screen_coord))
+//           << "Color at: " << screen_coord << " for test: " << name;
+//       EXPECT_TRUE(IsExpectedDepth(depth, screen_coord, expected_outlier_depth_,
+//                                   kDepthTolerance))
+//           << "Depth at: " << screen_coord << " for test: " << name;
+//       EXPECT_EQ(label.at(x, y)[0], expected_outlier_label_)
+//           << "Label at: " << screen_coord << " for test: " << name;
+//     }
+//   }
 
-  void SetUp() override { ResetExpectations(); }
+//   void SetUp() override { ResetExpectations(); }
 
-  // Tests that don't instantiate their own renderers should invoke this.
-  void Init(const RigidTransformd& X_WR, bool add_terrain = false) {
-    const Vector3d bg_rgb{kBgColor.r / 255., kBgColor.g / 255.,
-                          kBgColor.b / 255.};
-    RenderEngineVtkParams params{{}, bg_rgb};
-    renderer_ = make_unique<RenderEngineVtk>(params);
-    InitializeRenderer(X_WR, add_terrain, renderer_.get());
-    // Ensure that we truly have a non-default color.
-    EXPECT_FALSE(IsColorNear(kDefaultVisualColor,
-                             TestColor(renderer_->default_diffuse())));
-  }
+//   // Tests that don't instantiate their own renderers should invoke this.
+//   void Init(const RigidTransformd& X_WR, bool add_terrain = false) {
+//     const Vector3d bg_rgb{kBgColor.r / 255., kBgColor.g / 255.,
+//                           kBgColor.b / 255.};
+//     RenderEngineVtkParams params{{}, bg_rgb};
+//     renderer_ = make_unique<RenderEngineVtk>(params);
+//     InitializeRenderer(X_WR, add_terrain, renderer_.get());
+//     // Ensure that we truly have a non-default color.
+//     EXPECT_FALSE(IsColorNear(kDefaultVisualColor,
+//                              TestColor(renderer_->default_diffuse())));
+//   }
 
-  // Tests that instantiate their own renderers can initialize their renderers
-  // with this method.
-  void InitializeRenderer(const RigidTransformd& X_WR, bool add_terrain,
-                          RenderEngineVtk* engine) {
-    engine->UpdateViewpoint(X_WR);
+//   // Tests that instantiate their own renderers can initialize their renderers
+//   // with this method.
+//   void InitializeRenderer(const RigidTransformd& X_WR, bool add_terrain,
+//                           RenderEngineVtk* engine) {
+//     engine->UpdateViewpoint(X_WR);
 
-    if (add_terrain) {
-      PerceptionProperties material;
-      material.AddProperty("label", "id", RenderLabel::kDontCare);
-      material.AddProperty("phong", "diffuse", kTerrainColor.ToRgba());
-      engine->RegisterVisual(GeometryId::get_new_id(), HalfSpace(), material,
-                             RigidTransformd::Identity(),
-                             false /* needs update */);
-    }
-  }
+//     if (add_terrain) {
+//       PerceptionProperties material;
+//       material.AddProperty("label", "id", RenderLabel::kDontCare);
+//       material.AddProperty("phong", "diffuse", kTerrainColor.ToRgba());
+//       engine->RegisterVisual(GeometryId::get_new_id(), HalfSpace(), material,
+//                              RigidTransformd::Identity(),
+//                              false /* needs update */);
+//     }
+//   }
 
-  // Creates a simple perception properties set for fixed, known results. The
-  // material color can be modified by setting default_color_ prior to invoking
-  // this method.
-  PerceptionProperties simple_material(bool use_texture = false) const {
-    PerceptionProperties material;
-    material.AddProperty("label", "id", expected_label_);
-    if (use_texture) {
-      // The simple material's texture should always reproduce the texture
-      // perfectly -- so the diffuse color must be opaque white.
-      material.AddProperty("phong", "diffuse", Rgba(1, 1, 1));
+//   // Creates a simple perception properties set for fixed, known results. The
+//   // material color can be modified by setting default_color_ prior to invoking
+//   // this method.
+//   PerceptionProperties simple_material(bool use_texture = false) const {
+//     PerceptionProperties material;
+//     material.AddProperty("label", "id", expected_label_);
+//     if (use_texture) {
+//       // The simple material's texture should always reproduce the texture
+//       // perfectly -- so the diffuse color must be opaque white.
+//       material.AddProperty("phong", "diffuse", Rgba(1, 1, 1));
 
-      material.AddProperty(
-          "phong", "diffuse_map",
-          FindResourceOrThrow("drake/geometry/render/test/meshes/box.png"));
-    } else {
-      const Rgba default_color(
-          default_color_.r / 255.0, default_color_.g / 255.0,
-          default_color_.b / 255.0, default_color_.a / 255.0);
-      material.AddProperty("phong", "diffuse", default_color);
-    }
-    return material;
-  }
+//       material.AddProperty(
+//           "phong", "diffuse_map",
+//           FindResourceOrThrow("drake/geometry/render/test/meshes/box.png"));
+//     } else {
+//       const Rgba default_color(
+//           default_color_.r / 255.0, default_color_.g / 255.0,
+//           default_color_.b / 255.0, default_color_.a / 255.0);
+//       material.AddProperty("phong", "diffuse", default_color);
+//     }
+//     return material;
+//   }
 
-  // Resets all expected values to the initial, default values.
-  void ResetExpectations() {
-    expected_color_ = kDefaultVisualColor;
-    expected_outlier_color_ = kTerrainColor;
-    expected_outlier_depth_ = 3.f;
-    expected_object_depth_ = 2.f;
-    // We expect each test to explicitly set this.
-    expected_label_ = RenderLabel();
-    expected_outlier_label_ = RenderLabel::kDontCare;
-  }
+//   // Resets all expected values to the initial, default values.
+//   void ResetExpectations() {
+//     expected_color_ = kDefaultVisualColor;
+//     expected_outlier_color_ = kTerrainColor;
+//     expected_outlier_depth_ = 3.f;
+//     expected_object_depth_ = 2.f;
+//     // We expect each test to explicitly set this.
+//     expected_label_ = RenderLabel();
+//     expected_outlier_label_ = RenderLabel::kDontCare;
+//   }
 
-  // Populates the given renderer with the sphere required for
-  // PerformCenterShapeTest().
-  void PopulateSphereTest(RenderEngineVtk* renderer, bool use_texture = false) {
-    Sphere sphere{0.5};
-    expected_label_ = RenderLabel(12345);  // an arbitrary value.
-    renderer->RegisterVisual(geometry_id_, sphere, simple_material(use_texture),
-                             RigidTransformd::Identity(),
-                             true /* needs update */);
-    RigidTransformd X_WV{Vector3d{0, 0, 0.5}};
-    X_WV_.clear();
-    X_WV_.insert({geometry_id_, X_WV});
-    renderer->UpdatePoses(X_WV_);
-  }
+//   // Populates the given renderer with the sphere required for
+//   // PerformCenterShapeTest().
+//   void PopulateSphereTest(RenderEngineVtk* renderer, bool use_texture = false) {
+//     Sphere sphere{0.5};
+//     expected_label_ = RenderLabel(12345);  // an arbitrary value.
+//     renderer->RegisterVisual(geometry_id_, sphere, simple_material(use_texture),
+//                              RigidTransformd::Identity(),
+//                              true /* needs update */);
+//     RigidTransformd X_WV{Vector3d{0, 0, 0.5}};
+//     X_WV_.clear();
+//     X_WV_.insert({geometry_id_, X_WV});
+//     renderer->UpdatePoses(X_WV_);
+//   }
 
-  void PopulateSimpleBoxTest(RenderEngineVtk* renderer) {
-    // Simple cube.
-    const double length = 1.0;
-    const Box box = Box::MakeCube(length);
-    expected_label_ = kDefaultLabel;
-    const GeometryId id = GeometryId::get_new_id();
-    PerceptionProperties props = simple_material(false);
-    renderer->RegisterVisual(id, box, props, RigidTransformd::Identity(),
-                             true /* needs update */);
-    // Leave the box centered on the xy plane, but raise it up for the expected
-    // depth in the camera (distance from eye to near surface):
-    //      expected depth = p_WC.z - length / 2 - p_WV.z;
-    const double p_WVo_z =
-        X_WC_.translation()(2) - length / 2 - expected_object_depth_;
-    RigidTransformd X_WV{Vector3d{0, 0, p_WVo_z}};
-    renderer->UpdatePoses(
-        unordered_map<GeometryId, RigidTransformd>{{id, X_WV}});
-    expected_color_ = default_color_;
-  }
+//   void PopulateSimpleBoxTest(RenderEngineVtk* renderer) {
+//     // Simple cube.
+//     const double length = 1.0;
+//     const Box box = Box::MakeCube(length);
+//     expected_label_ = kDefaultLabel;
+//     const GeometryId id = GeometryId::get_new_id();
+//     PerceptionProperties props = simple_material(false);
+//     renderer->RegisterVisual(id, box, props, RigidTransformd::Identity(),
+//                              true /* needs update */);
+//     // Leave the box centered on the xy plane, but raise it up for the expected
+//     // depth in the camera (distance from eye to near surface):
+//     //      expected depth = p_WC.z - length / 2 - p_WV.z;
+//     const double p_WVo_z =
+//         X_WC_.translation()(2) - length / 2 - expected_object_depth_;
+//     RigidTransformd X_WV{Vector3d{0, 0, p_WVo_z}};
+//     renderer->UpdatePoses(
+//         unordered_map<GeometryId, RigidTransformd>{{id, X_WV}});
+//     expected_color_ = default_color_;
+//   }
 
-  // Performs the work to test the rendering with a shape centered in the
-  // image. To pass, the renderer will have to have been populated with a
-  // compatible shape and camera configuration (e.g., PopulateSphereTest()).
-  void PerformCenterShapeTest(RenderEngineVtk* renderer, const char* name,
-                              const DepthRenderCamera* camera = nullptr) {
-    const DepthRenderCamera& cam = camera ? *camera : depth_camera_;
-    const int w = cam.core().intrinsics().width();
-    const int h = cam.core().intrinsics().height();
-    // Can't use the member images in case the camera has been configured to a
-    // different size than the default camera_ configuration.
-    ImageRgba8U color(w, h);
-    ImageDepth32F depth(w, h);
-    ImageLabel16I label(w, h);
-    Render(renderer, &cam, &color, &depth, &label);
+//   // Performs the work to test the rendering with a shape centered in the
+//   // image. To pass, the renderer will have to have been populated with a
+//   // compatible shape and camera configuration (e.g., PopulateSphereTest()).
+//   void PerformCenterShapeTest(RenderEngineVtk* renderer, const char* name,
+//                               const DepthRenderCamera* camera = nullptr) {
+//     const DepthRenderCamera& cam = camera ? *camera : depth_camera_;
+//     const int w = cam.core().intrinsics().width();
+//     const int h = cam.core().intrinsics().height();
+//     // Can't use the member images in case the camera has been configured to a
+//     // different size than the default camera_ configuration.
+//     ImageRgba8U color(w, h);
+//     ImageDepth32F depth(w, h);
+//     ImageLabel16I label(w, h);
+//     Render(renderer, &cam, &color, &depth, &label);
 
-    VerifyCenterShapeTest(*renderer, name, cam, color, depth, label);
-  }
+//     VerifyCenterShapeTest(*renderer, name, cam, color, depth, label);
+//   }
 
-  void VerifyCenterShapeTest(const RenderEngineVtk& renderer, const char* name,
-                             const DepthRenderCamera& camera,
-                             const ImageRgba8U& color,
-                             const ImageDepth32F& depth,
-                             const ImageLabel16I& label) const {
-    VerifyOutliers(renderer, camera, name, &color, &depth, &label);
+//   void VerifyCenterShapeTest(const RenderEngineVtk& renderer, const char* name,
+//                              const DepthRenderCamera& camera,
+//                              const ImageRgba8U& color,
+//                              const ImageDepth32F& depth,
+//                              const ImageLabel16I& label) const {
+//     VerifyOutliers(renderer, camera, name, &color, &depth, &label);
 
-    // Verifies inside the sphere.
-    const ScreenCoord inlier = GetInlier(camera.core().intrinsics());
-    const int x = inlier.x;
-    const int y = inlier.y;
-    EXPECT_TRUE(CompareColor(expected_color_, color, inlier))
-        << "Color at: " << inlier << " for test: " << name;
-    EXPECT_TRUE(
-        IsExpectedDepth(depth, inlier, expected_object_depth_, kDepthTolerance))
-        << "Depth at: " << inlier << " for test: " << name;
-    EXPECT_EQ(label.at(x, y)[0], static_cast<int>(expected_label_))
-        << "Label at: " << inlier << " for test: " << name;
-  }
+//     // Verifies inside the sphere.
+//     const ScreenCoord inlier = GetInlier(camera.core().intrinsics());
+//     const int x = inlier.x;
+//     const int y = inlier.y;
+//     EXPECT_TRUE(CompareColor(expected_color_, color, inlier))
+//         << "Color at: " << inlier << " for test: " << name;
+//     EXPECT_TRUE(
+//         IsExpectedDepth(depth, inlier, expected_object_depth_, kDepthTolerance))
+//         << "Depth at: " << inlier << " for test: " << name;
+//     EXPECT_EQ(label.at(x, y)[0], static_cast<int>(expected_label_))
+//         << "Label at: " << inlier << " for test: " << name;
+//   }
 
-  TestColor expected_color_{kDefaultVisualColor};
-  TestColor expected_outlier_color_{kDefaultVisualColor};
-  float expected_outlier_depth_{3.f};
-  float expected_object_depth_{2.f};
-  RenderLabel expected_label_;
-  RenderLabel expected_outlier_label_{RenderLabel::kDontCare};
-  TestColor default_color_{kDefaultVisualColor};
+//   TestColor expected_color_{kDefaultVisualColor};
+//   TestColor expected_outlier_color_{kDefaultVisualColor};
+//   float expected_outlier_depth_{3.f};
+//   float expected_object_depth_{2.f};
+//   RenderLabel expected_label_;
+//   RenderLabel expected_outlier_label_{RenderLabel::kDontCare};
+//   TestColor default_color_{kDefaultVisualColor};
 
-  // We store a reference depth camera; we can always derive a color camera
-  // from it; they have the same intrinsics and we grab the global
-  // FLAGS_show_window.
-  const DepthRenderCamera depth_camera_{
-      {"unused", {kWidth, kHeight, kFovY}, {kClipNear, kClipFar}, {}},
-      {kZNear, kZFar}};
+//   // We store a reference depth camera; we can always derive a color camera
+//   // from it; they have the same intrinsics and we grab the global
+//   // FLAGS_show_window.
+//   const DepthRenderCamera depth_camera_{
+//       {"unused", {kWidth, kHeight, kFovY}, {kClipNear, kClipFar}, {}},
+//       {kZNear, kZFar}};
 
-  ImageRgba8U color_;
-  ImageDepth32F depth_;
-  ImageLabel16I label_;
-  RigidTransformd X_WC_;
-  GeometryId geometry_id_;
+//   ImageRgba8U color_;
+//   ImageDepth32F depth_;
+//   ImageLabel16I label_;
+//   RigidTransformd X_WC_;
+//   GeometryId geometry_id_;
 
-  // The pose of the sphere created in PopulateSphereTest().
-  unordered_map<GeometryId, RigidTransformd> X_WV_;
+//   // The pose of the sphere created in PopulateSphereTest().
+//   unordered_map<GeometryId, RigidTransformd> X_WV_;
 
-  unique_ptr<RenderEngineVtk> renderer_;
-};
+//   unique_ptr<RenderEngineVtk> renderer_;
+// };
 
 // Tests an empty image -- confirms that it clears to the "empty" color -- no
 // use of "inlier" or "outlier" pixel locations.
@@ -564,6 +564,8 @@ TEST_F(RenderEngineVtkTest, NoBodyTest) {
   VerifyUniformColor(kBgColor);
   VerifyUniformLabel(RenderLabel::kEmpty);
   VerifyUniformDepth(std::numeric_limits<float>::infinity());
+
+  ASSERT_EQ(true, false);
 }
 
 // Confirm that the color image clear color gets successfully configured.

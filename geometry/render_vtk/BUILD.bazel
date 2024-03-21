@@ -115,6 +115,28 @@ drake_cc_library(
     ],
 )
 
+drake_cc_library(
+    name = "internal_render_engine_vtk_tester",
+    testonly = 1,
+    srcs = ["internal_render_engine_vtk_tester.cc"],
+
+    hdrs = ["internal_render_engine_vtk_tester.h"],
+    deps = [
+        ":internal_render_engine_vtk",
+        "//common:find_resource",
+        "//common/test_utilities",
+        "//geometry/test_utilities:dummy_render_engine",
+        "//math:geometric_transform",
+        "//systems/sensors:image_io",
+        "//systems/sensors/test_utilities:image_compare",
+        "//visualization:colorize_depth_image",
+        "@gtest//:without_main",
+        "@gflags//:gflags",
+        "@vtk_internal//:vtkRenderingCore",
+        "@vtk_internal//:vtkRenderingOpenGL2",
+    ],
+)
+
 drake_cc_googletest(
     name = "internal_render_engine_vtk_test",
     timeout = "moderate",
@@ -139,16 +161,17 @@ drake_cc_googletest(
     ],
     tags = vtk_test_tags(),
     deps = [
-        ":internal_render_engine_vtk",
-        "//common:find_resource",
-        "//common/test_utilities",
-        "//geometry/test_utilities:dummy_render_engine",
-        "//math:geometric_transform",
-        "//systems/sensors:image_io",
-        "//systems/sensors/test_utilities:image_compare",
-        "//visualization:colorize_depth_image",
-        "@vtk_internal//:vtkRenderingCore",
-        "@vtk_internal//:vtkRenderingOpenGL2",
+        ":internal_render_engine_vtk_tester",
+        # ":internal_render_engine_vtk",
+        # "//common:find_resource",
+        # "//common/test_utilities",
+        # "//geometry/test_utilities:dummy_render_engine",
+        # "//math:geometric_transform",
+        # "//systems/sensors:image_io",
+        # "//systems/sensors/test_utilities:image_compare",
+        # "//visualization:colorize_depth_image",
+        # "@vtk_internal//:vtkRenderingCore",
+        # "@vtk_internal//:vtkRenderingOpenGL2",
     ],
 )
 
